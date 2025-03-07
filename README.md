@@ -6,7 +6,7 @@ Welcome to the **Text Editor App**, a simple yet functional text editor built us
 
 The goal of this text editor is to create a basic, user-friendly tool for editing text files.
 
-### Features:
+### Planned Features:
 - Open and read text files.
 - Edit the contents of the file.
 - Save changes back to the file.
