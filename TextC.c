@@ -7,6 +7,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>  
 
 /* 
         STEP 49
@@ -24,8 +25,15 @@ struct editorConfig{
     int cx, cy;
     int screenrows;
     int screencols;
+    int numrows;
+    erow rows;
     struct termios orig_termios;
 };
+
+typedef struct erow {
+    int size;
+    char *chars;
+} erow;
 
 struct editorConfig E;
 
@@ -61,6 +69,8 @@ int main() {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.numrows = 0;
+
     if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
@@ -171,6 +181,15 @@ int getCursorPosition(int *rows, int *cols) {
 
     return 0;   
 }
+
+
+/*** file i/o ***/
+
+void editorOpen() {
+    char *line = "Hello World!";
+    ssize_t linelen = 13;
+}
+
 
 
 /*** input ***/
