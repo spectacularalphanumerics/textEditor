@@ -10,8 +10,8 @@
 #include <sys/types.h>  
 
 /* 
-        STEP 49
-        https://viewsourcecode.org/snaptoken/kilo/03.rawInputAndOutput.html
+        STEP 57
+        https://viewsourcecode.org/snaptoken/kilo/04.aTextViewer.html
 */
 
 
@@ -59,6 +59,7 @@ enum editorKey {
 int main() {
     enableRawMode();
     initEditor();
+    editorOpen();
     while (1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -188,6 +189,12 @@ int getCursorPosition(int *rows, int *cols) {
 void editorOpen() {
     char *line = "Hello World!";
     ssize_t linelen = 13;
+
+    E.row.size = linelen;
+    E.row.chars = malloc(linelen + 1);
+    memcpy(E.row.chars, line, linelen);
+    E.row.chars[lifelen] = '\0';
+    E.numrows =1;
 }
 
 
