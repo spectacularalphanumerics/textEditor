@@ -1,4 +1,9 @@
 /*** includes ***/
+
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -10,7 +15,7 @@
 #include <sys/types.h>  
 
 /* 
-        STEP 57
+        STEP 64
         https://viewsourcecode.org/snaptoken/kilo/04.aTextViewer.html
 */
 
@@ -26,7 +31,7 @@ struct editorConfig{
     int screenrows;
     int screencols;
     int numrows;
-    erow rows;
+    erow *row;
     struct termios orig_termios;
 };
 
@@ -56,10 +61,12 @@ enum editorKey {
 
 /*** init ***/
 
-int main() {
+int main(int argc, char *argv[]) {
     enableRawMode();
     initEditor();
-    editorOpen();
+    if (argc >= 2) {
+        editorOpen();
+    }
     while (1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -71,6 +78,7 @@ void initEditor() {
     E.cx = 0;
     E.cy = 0;
     E.numrows = 0;
+    E.row = NULL;
 
     if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
@@ -184,17 +192,42 @@ int getCursorPosition(int *rows, int *cols) {
 }
 
 
+/*** row operations ***/
+
+void editorAppendRow(char *s, size_t len) {
+    E.row = realloc(E.row, sizeof(E.row) * (E.numrows + 1));
+
+    int at = E.numrows;
+    E.row[at].size = len;
+    E.row[at].chars = malloc(len + 1);
+    memcpy(E.row[at].chars, s, len);
+    E.row[at].chars[len] = '\0';
+    E.numrows++;
+}
+
+
+
+
+
 /*** file i/o ***/
 
-void editorOpen() {
-    char *line = "Hello World!";
-    ssize_t linelen = 13;
+void editorOpen(char *filename) {
+    FILE *fp = fopen(filename, 'r');
+    if (!fp) die("fopen");
 
-    E.row.size = linelen;
-    E.row.chars = malloc(linelen + 1);
-    memcpy(E.row.chars, line, linelen);
-    E.row.chars[lifelen] = '\0';
-    E.numrows =1;
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+    linelen = getline(&line, &linecap, fp);
+
+    if (linelen != -1) {
+        while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
+            linelen--;
+        }
+        editorAppendRow(line, linelen);
+    }
+    free(line);
+    fclose(fp);    
 }
 
 
@@ -283,29 +316,34 @@ void editorRefreshScreen() {
 
 void editorDrawRows(struct abuf *ab) {
     int y;
-    for (y=0 ; y < E.screenrows ; y++) {
-        if (y == E.screenrows / 3) {
-            char welcome[80];
-            int welcomelen = snprintf(welcome, sizeof(welcome), "TextC editor -- version %s", TectC_version);
-            if (welcomelen > E.screencols) welcomelen = E.screencols;
-            int padding = (E.screencols - welcomelen) / 2;
-            if (padding) {
-                abAppend(ab, "~", 1);
-                padding--;
-            }
-            while (padding--) abAppend(ab, " ", 1);
-            abAppend(ab, welcome, welcomelen);
-        } else {
+    for (y = 0; y < E.screenrows; y++) {
+      if (y >= E.numrows) {
+        if ( E.numrows == 0 && y == E.screenrows / 3) {
+          char welcome[80];
+          int welcomelen = snprintf(welcome, sizeof(welcome),
+            "Kilo editor -- version %s", KILO_VERSION);
+          if (welcomelen > E.screencols) welcomelen = E.screencols;
+          int padding = (E.screencols - welcomelen) / 2;
+          if (padding) {
             abAppend(ab, "~", 1);
+            padding--;
+          }
+          while (padding--) abAppend(ab, " ", 1);
+          abAppend(ab, welcome, welcomelen);
+        } else {
+          abAppend(ab, "~", 1);
         }
-
-        abAppend(ab, "\x1b[K", 3);
-        if (y < E.screenrows -1) {
-            abAppend(ab, "\r\n", 2);
-        }
+      } else {
+        int len = E.row.size;
+        if (len > E.screencols) len = E.screencols;
+        abAppend(ab, E.row.chars, len);
+      }
+      abAppend(ab, "\x1b[K", 3);
+      if (y < E.screenrows - 1) {
+        abAppend(ab, "\r\n", 2);
+      }
     }
-}
-
+  }
 
 /*** append buffer ***/
 //      no dynamic string type so have to make it myself kms
