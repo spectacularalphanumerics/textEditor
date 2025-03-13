@@ -28,6 +28,7 @@
 /*** data ***/
 struct editorConfig{
     int cx, cy;
+    int rowoff;
     int screenrows;
     int screencols;
     int numrows;
@@ -77,6 +78,7 @@ int main(int argc, char *argv[]) {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.rowoff = 0;
     E.numrows = 0;
     E.row = NULL;
 
@@ -212,23 +214,20 @@ void editorAppendRow(char *s, size_t len) {
 /*** file i/o ***/
 
 void editorOpen(char *filename) {
-    FILE *fp = fopen(filename, 'r');
+    FILE *fp = fopen(filename, "r");
     if (!fp) die("fopen");
-
     char *line = NULL;
     size_t linecap = 0;
     ssize_t linelen;
-    linelen = getline(&line, &linecap, fp);
-
-    if (linelen != -1) {
-        while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
-            linelen--;
-        }
-        editorAppendRow(line, linelen);
+    while ((linelen = getline(&line, &linecap, fp)) != -1) {
+      while (linelen > 0 && (line[linelen - 1] == '\n' ||
+                             line[linelen - 1] == '\r'))
+        linelen--;
+      editorAppendRow(line, linelen);
     }
     free(line);
-    fclose(fp);    
-}
+    fclose(fp);
+  }
 
 
 
@@ -297,6 +296,7 @@ void editorMoveCursor(int key) {
 
 /*** output ***/
 void editorRefreshScreen() {
+    editorScroll();
     struct abuf ab = ABUF_INIT;
 
     abappend(&ab, "\x1b[?25l",6);
@@ -314,14 +314,26 @@ void editorRefreshScreen() {
     abFree(&ab); 
 }
 
+
+void editorScroll() {
+    if (E.cy < E.rowoff) {
+        E.rowoff = E.cy;
+    }
+    if (E.cy >= E.rowoff + E.screenrows) {
+        E.rowoff = E.cy - E.screenrows + 1;
+    }
+}
+
+
 void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenrows; y++) {
-      if (y >= E.numrows) {
+        int filerow = y+E.rowoff;
+      if (filerow >= E.numrows) {
         if ( E.numrows == 0 && y == E.screenrows / 3) {
           char welcome[80];
           int welcomelen = snprintf(welcome, sizeof(welcome),
-            "Kilo editor -- version %s", KILO_VERSION);
+            "TextC editor -- version %s", TectC_version);
           if (welcomelen > E.screencols) welcomelen = E.screencols;
           int padding = (E.screencols - welcomelen) / 2;
           if (padding) {
@@ -334,9 +346,9 @@ void editorDrawRows(struct abuf *ab) {
           abAppend(ab, "~", 1);
         }
       } else {
-        int len = E.row.size;
+        int len = E.row[filerow].size;
         if (len > E.screencols) len = E.screencols;
-        abAppend(ab, E.row.chars, len);
+        abAppend(ab, E.row[filerow].chars, len);
       }
       abAppend(ab, "\x1b[K", 3);
       if (y < E.screenrows - 1) {
