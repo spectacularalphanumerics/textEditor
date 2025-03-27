@@ -17,8 +17,8 @@
 #include <time.h>
 
 /* 
-        STEP 100
-        https://viewsourcecode.org/snaptoken/kilo/04.aTextViewer.html
+        STEP 106
+        https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html
 */
 
 
@@ -58,6 +58,7 @@ struct editorConfig E;
 #define TectC_version "0.1"
 
 enum editorKey {
+    BACKSPACE = 127,
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -264,7 +265,27 @@ void editorAppendRow(char *s, size_t len) {
     E.numrows++;
 }
 
+void editorRowInsertChar(erow *row, int at, int c) {
+    if (at < 0 || at > row->size) at = row->size;
+    row->chars = realloc(row->chars, row->size + 2);
+    memmove(&row->chars[at+1], &row->chars[at], row->size - at+1);
+    row->size++;
+    row->chars[at] = c;
+    editorUpdateRow(row);
+}
 
+
+
+
+/*** editor operations  ***/
+
+void editorInsertChar(int c) {
+    if (E.cy == E.numrows) {
+        editorAppendRow("", 0);
+    }
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
+}
 
 
 
@@ -288,51 +309,77 @@ void editorOpen(char *filename) {
     fclose(fp);
   }
 
+char *editorRowsToString(int *buflen) {
+    int totlen = 0;
+    int j;
+    for (j=0; j<E.numrows; j++) {
+        totlen += E.row[j].size + 1;
+    }
+    *buflen = totlen;
+    char *buf = malloc(totlen);
+    char *p = buf;
+    for (j=0; j<E.numrows; j++) {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p+= E.row[j].size;
+        *p = '\n';
+        p++; 
+    }
+    return buf;
+}
+
 
 
 /*** input ***/
 void editorProcessKeypress() {
-    int c = editorReadKey();
-    switch (c) {
-            write(STDOUT_FILENO, "\x1b[2J", 4);
-            write(STDOUT_FILENO, "\x1b[H", 3);
-            exit(0);
-            break;
-
-
-        case HOME_KEY:
-            E.cx = 0;
-            break;
-        
-        case END_KEY:
-            if (E.cy < E.numrows) {
-                E.cx = E.row[E.cy].size;
-            }
-            break;
-        
-        case PAGE_UP:
-        case PAGE_DOWN:
-        {
-            if (c == PAGE_UP) {
-                E.cy = E.rowoff;
-            } else if (c== PAGE_DOWN) {
-                E.cy = E.rowoff + E.screenrows - 1;
-                if (E.cy > E.numrows) E.cy = E.numrows;
-            }
-
-            int times = E.screenrows;
-            while (times --)
-                editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-        }
+  int c = editorReadKey();
+  switch (c) {
+    case '\r':
+        /* TODO */
         break;
-
-        case ARROW_UP:
-        case ARROW_LEFT:
-        case ARROW_DOWN:
-        case ARROW_RIGHT:
-            editorMoveCursor(c);
-            break;
-    }
+    case CTRL_KEY('q'):
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
+        exit(0);
+        break;
+    case HOME_KEY:
+        E.cx = 0;
+        break;
+    case END_KEY:
+        if (E.cy < E.numrows)
+            E.cx = E.row[E.cy].size;
+        break;
+    case BACKSPACE:
+    case CTRL_KEY('h'):
+    case DEL_KEY:
+        /* TODO */
+         break;
+    case PAGE_UP:
+    case PAGE_DOWN:
+         {
+         if (c == PAGE_UP) {
+           E.cy = E.rowoff;
+        } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
+        }
+        int times = E.screenrows;
+        while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+      }
+      break;
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
+      editorMoveCursor(c);
+      break;
+    case CTRL_KEY('l'):
+    case '\x1b':
+      break;
+    default:
+      editorInsertChar(c);
+      break;
+  }
 }
 
 void editorMoveCursor(int key) {
@@ -439,6 +486,13 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
     abAppend(ab, "\x1b[m", 3);
     abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[K", 3);
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols) msglen = E.screencols;
+    if (msglen && time(NULL) - E.statusmsg_time < 5) abAppend(ab, E.statusmsg, msglen);
 }
 
 void editorDrawRows(struct abuf *ab) {
