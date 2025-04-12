@@ -5,6 +5,7 @@
 #define _GNU_SOURCE
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -13,10 +14,10 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>  
+#include <sys/types.h>
 #include <time.h>
 
-/* 
+/*
         STEP 106
         https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html
 */
@@ -28,6 +29,13 @@
 
 
 /*** data ***/
+typedef struct erow {
+    int rsize;
+    char *render;
+    int size;
+    char *chars;
+} erow;
+
 struct editorConfig{
     int cx, cy;
     int rx;     //  E.cx is an index into chars field of an erow, E.rx is an index into render field
@@ -43,12 +51,6 @@ struct editorConfig{
     struct termios orig_termios;
 };
 
-typedef struct erow {
-    int rsize;
-    char *render;
-    int size;
-    char *chars;
-} erow;
 
 struct editorConfig E;
 
@@ -126,7 +128,7 @@ void disableRawMode() {
 
 void die(const char *s) {
     write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);   
+    write(STDOUT_FILENO, "\x1b[H", 3);
     perror(s);
     exit(1);
 }
@@ -205,11 +207,11 @@ int getCursorPosition(int *rows, int *cols) {
         i++;
     }
     buf[i] = "\0";
-    
+
     if (buf[0] != '\x1b' || buf[1] != '[') return -1;
     if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
 
-    return 0;   
+    return 0;
 }
 
 
@@ -247,7 +249,7 @@ void editorUpdateRow(erow *row) {
     row->render[idx] = '\0';
     row->rsize = idx;
   }
-  
+
 
 void editorAppendRow(char *s, size_t len) {
     E.row = realloc(E.row, sizeof(E.row) * (E.numrows + 1));
@@ -308,7 +310,6 @@ void editorOpen(char *filename) {
     free(line);
     fclose(fp);
   }
-
 char *editorRowsToString(int *buflen) {
     int totlen = 0;
     int j;
@@ -322,65 +323,25 @@ char *editorRowsToString(int *buflen) {
         memcpy(p, E.row[j].chars, E.row[j].size);
         p+= E.row[j].size;
         *p = '\n';
-        p++; 
+        p++;
     }
     return buf;
 }
 
+void editorSave() {
+    if (E.filename == NULL) return;
+    int len;
+    char *buf = editorRowsToString(&len);
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    
+    ftruncate(fd, len);
+    write(fd, buf, len);
+    close(fd);
+    free(buf);
+}
 
 
 /*** input ***/
-void editorProcessKeypress() {
-  int c = editorReadKey();
-  switch (c) {
-    case '\r':
-        /* TODO */
-        break;
-    case CTRL_KEY('q'):
-        write(STDOUT_FILENO, "\x1b[2J", 4);
-        write(STDOUT_FILENO, "\x1b[H", 3);
-        exit(0);
-        break;
-    case HOME_KEY:
-        E.cx = 0;
-        break;
-    case END_KEY:
-        if (E.cy < E.numrows)
-            E.cx = E.row[E.cy].size;
-        break;
-    case BACKSPACE:
-    case CTRL_KEY('h'):
-    case DEL_KEY:
-        /* TODO */
-         break;
-    case PAGE_UP:
-    case PAGE_DOWN:
-         {
-         if (c == PAGE_UP) {
-           E.cy = E.rowoff;
-        } else if (c == PAGE_DOWN) {
-            E.cy = E.rowoff + E.screenrows - 1;
-            if (E.cy > E.numrows) E.cy = E.numrows;
-        }
-        int times = E.screenrows;
-        while (times--)
-            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-      }
-      break;
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-      editorMoveCursor(c);
-      break;
-    case CTRL_KEY('l'):
-    case '\x1b':
-      break;
-    default:
-      editorInsertChar(c);
-      break;
-  }
-}
 
 void editorMoveCursor(int key) {
     erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
@@ -402,7 +363,7 @@ void editorMoveCursor(int key) {
             }
             break;
         case ARROW_DOWN:
-            if (E.cy E.numrows) { 
+            if (E.cy E.numrows) {
                 E.cy++;
             }
             break;
@@ -420,28 +381,65 @@ void editorMoveCursor(int key) {
     }
 }
 
+void editorProcessKeypress() {
+    int c = editorReadKey();
+    switch (c) {
+        case '\r':
+            /* TODO */
+                break;
+        case CTRL_KEY('q'):
+            write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
+        exit(0);
+        break;
+
+        case CTRL_KEY('s'):
+            editorSave();
+        break;
+        
+        case HOME_KEY:
+            E.cx = 0;
+        break;
+        case END_KEY:
+            if (E.cy < E.numrows)
+                E.cx = E.row[E.cy].size;
+        break;
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DEL_KEY:
+            /* TODO */
+             break;
+        case PAGE_UP:
+        case PAGE_DOWN:
+        {
+            if (c == PAGE_UP) {
+                E.cy = E.rowoff;
+            } else if (c == PAGE_DOWN) {
+                E.cy = E.rowoff + E.screenrows - 1;
+                if (E.cy > E.numrows) E.cy = E.numrows;
+            }
+            int times = E.screenrows;
+            while (times--)
+                editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        }
+        break;
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+          editorMoveCursor(c);
+        break;
+        case CTRL_KEY('l'):
+        case '\x1b':
+          break;
+        default:
+            editorInsertChar(c);
+        break;
+    }
+}
 
 
 /*** output ***/
-void editorRefreshScreen() {
-    editorScroll();
-    struct abuf ab = ABUF_INIT;
-
-    abappend(&ab, "\x1b[?25l",6);
-    abAppend(&ab, "\x1b[H", 3);
-
-    editorDrawRows(&ab);
-    editorDrawStatusBar(&ab);
-
-    char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
-    abAppend(&ab, buf, strlen(buf));
-
-    abAppend(&ab, "\x1b[?25h", 6);
-
-    write(STDOUT_FILENO, ab.b, ab.len);
-    abFree(&ab); 
-}
 
 void editorSetStatusMessage(const char *fmt, ...) {
     va_list ap;
@@ -525,6 +523,27 @@ void editorDrawRows(struct abuf *ab) {
       abAppend(ab, "\r\n", 2);
     }
   }
+
+void editorRefreshScreen() {
+    editorScroll();
+    struct abuf ab = ABUF_INIT;
+
+    abappend(&ab, "\x1b[?25l",6);
+    abAppend(&ab, "\x1b[H", 3);
+
+    editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
+    abAppend(&ab, buf, strlen(buf));
+
+    abAppend(&ab, "\x1b[?25h", 6);
+
+    write(STDOUT_FILENO, ab.b, ab.len);
+    abFree(&ab);
+}
+
 
 /*** append buffer ***/
 //      no dynamic string type so have to make it myself kms
