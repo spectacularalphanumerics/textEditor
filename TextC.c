@@ -22,10 +22,45 @@
         https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html
 */
 
+// Function prototypes
+void enableRawMode();
+void disableRawMode();
+void die(const char *s);
+int editorReadKey();
+int getWindowSize(int *rows, int *cols);
+int getCursorPosition(int *rows, int *cols);
 
+int editorCxToRx(erow *row, int cx);
+void editorUpdateRow(erow *row);
+void editorInsertRow(int at, char *s, size_t len);
+void editorFreeRow(erow *row);
+void editorDelRow(int at);
+void editorRowInsertChar(erow *row, int at, int c);
+void editorRowAppendString(erow *row, char *s, size_t len);
+void editorRowDelChar(erow *row, int at);
 
+void editorInsertChar(int c);
+void editorInsertNewline();
+void editorDelChar();
 
+void editorOpen(char *filename);
+char *editorRowsToString(int *buflen);
+void editorSave();
 
+void editorMoveCursor(int key);
+void editorProcessKeypress();
+
+void editorSetStatusMessage(const char *fmt, ...);
+void editorScroll();
+void editorDrawStatusBar(struct abuf *ab);
+void editorDrawMessageBar(struct abuf *ab);
+void editorDrawRows(struct abuf *ab);
+void editorRefreshScreen();
+
+void abAppend(struct abuf *ab, const char *s, int len);
+void abFree(struct abuf *ab);
+
+void initEditor();
 
 
 /*** data ***/
